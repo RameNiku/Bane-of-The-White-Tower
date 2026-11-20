@@ -1,0 +1,38 @@
+{
+  "rules": {
+    "rooms": {
+      ".read": "auth != null",
+      "$slot": {
+        ".write": "auth != null && ($slot === '1' || $slot === '2' || $slot === '3' || $slot === '4' || $slot === '5') && ((!data.exists() && newData.exists() && newData.child('hostId').val() === auth.uid && root.child('lastCreate').child(auth.uid).isNumber() && root.child('lastCreate').child(auth.uid).val() >= now - 15000 && root.child('lastCreate').child(auth.uid).val() <= now && root.child('rooms').child('1').child('hostId').val() !== auth.uid && root.child('rooms').child('2').child('hostId').val() !== auth.uid && root.child('rooms').child('3').child('hostId').val() !== auth.uid && root.child('rooms').child('4').child('hostId').val() !== auth.uid && root.child('rooms').child('5').child('hostId').val() !== auth.uid) || (data.exists() && data.child('hostId').val() === auth.uid && !newData.exists()))",
+        ".validate": "newData.hasChildren(['hostId','hostNick','seed','createdAt'])",
+        "hostId": {".validate": "newData.isString() && newData.val() === auth.uid"},
+        "hostNick": {".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 16"},
+        "seed": {".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 2147483647"},
+        "createdAt": {".validate": "newData.isNumber() && newData.val() >= now - 15000 && newData.val() <= now + 2000"},
+        "$unknown": {".validate": false}
+      }
+    },
+    "lastCreate": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && newData.isNumber() && newData.val() >= now - 10000 && newData.val() <= now + 2000 && (!data.exists() || (data.isNumber() && now - data.val() >= 60000))"
+      }
+    },
+    "players": {
+      "$slot": {
+        ".read": "auth != null && root.child('rooms').child($slot).exists()",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && (!newData.exists() || root.child('rooms').child($slot).exists())",
+          ".validate": "newData.hasChildren(['nick','x','y','z','yaw','updatedAt'])",
+          "nick": {".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 16"},
+          "x": {".validate": "newData.isNumber() && newData.val() >= -14 && newData.val() <= 14"},
+          "y": {".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() <= 200"},
+          "z": {".validate": "newData.isNumber() && newData.val() >= -14 && newData.val() <= 14"},
+          "yaw": {".validate": "newData.isNumber() && newData.val() >= -100000 && newData.val() <= 100000"},
+          "updatedAt": {".validate": "newData.isNumber() && newData.val() >= now - 20000 && newData.val() <= now + 2000"},
+          "$unknown": {".validate": false}
+        }
+      }
+    }
+  }
+}

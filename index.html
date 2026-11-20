@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#eff2f5" />
+  <title>Bílá věž — 3D parkour prototyp</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #eef1f4; }
+    canvas { display: block; width: 100%; height: 100%; }
+    .hud { position: fixed; z-index: 2; pointer-events: none; color: #364250; user-select: none; }
+    .top-left { top: 25px; left: 28px; }
+    .eyebrow { font-size: 10px; font-weight: 800; letter-spacing: 0.22em; color: #71808d; margin-bottom: 7px; }
+    .game-title { font-size: clamp(18px, 2vw, 25px); font-weight: 800; letter-spacing: -0.035em; }
+    .subtitle { margin-top: 4px; font-size: 12px; color: #8a96a3; }
+    .top-right { right: 27px; top: 28px; text-align: right; }
+    .stat { font-size: 13px; margin: 0 0 7px; font-variant-numeric: tabular-nums; }
+    .stat b { color: #263748; }
+    .progress { width: 156px; height: 5px; border-radius: 100px; margin: 11px 0 0 auto; background: #d6dce2; overflow: hidden; }
+    .progress-inner { width: 0; height: 100%; background: #8297b3; transition: width .3s ease; }
+    .crosshair { position: fixed; z-index: 2; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 17px; height: 17px; pointer-events: none; opacity: .75; }
+    .crosshair::before, .crosshair::after { content: ""; position: absolute; border-radius: 4px; background: #354251; box-shadow: 0 0 2px #fff; }
+    .crosshair::before { width: 2px; height: 16px; left: 7px; top: 0; }
+    .crosshair::after { width: 16px; height: 2px; left: 0; top: 7px; }
+    .bottom-bar { bottom: 25px; left: 50%; transform: translateX(-50%); font-size: 11px; text-align: center; letter-spacing: .04em; white-space: nowrap; padding: 9px 15px; border-radius: 100px; background: rgba(255,255,255,.63); border: 1px solid rgba(155,169,184,.2); backdrop-filter: blur(8px); }
+    .bottom-bar strong { color: #314357; }
+    #wallHint { color: #596e89; }
+    .toast { position: fixed; z-index: 4; left: 50%; top: 19%; transform: translate(-50%, -15px); opacity: 0; pointer-events: none; text-align: center; padding: 13px 20px; color: #3e5671; background: rgba(255,255,255,.95); border: 1px solid #d6dee7; border-radius: 15px; box-shadow: 0 12px 45px #34455920; transition: opacity .23s, transform .23s; font-weight: 700; }
+    .toast.show { opacity: 1; transform: translate(-50%,0); }
+    .overlay { position: fixed; z-index: 5; inset: 0; display: grid; place-items: center; background: rgba(231,236,241,.48); backdrop-filter: blur(10px); padding: 20px; }
+    .overlay.hidden { display: none; }
+    .modal { background: rgba(255,255,255,.94); width: min(100%, 485px); border-radius: 23px; padding: 35px 36px; box-shadow: 0 18px 80px rgba(54,70,90,.15); border: 1px solid #fff; text-align: center; }
+    .modal .symbol { width: 62px; height: 62px; margin: 0 auto 17px; border: 1px solid #cbd4de; border-radius: 18px; display: grid; place-items: center; font-size: 32px; font-weight: 200; color: #8296ae; background: linear-gradient(145deg,#fff,#eef2f6); }
+    h1 { margin: 0 0 8px; font-size: 30px; color: #26394e; letter-spacing: -.06em; }
+    .lead { margin: 0 auto 20px; max-width: 375px; color: #647282; font-size: 14px; line-height: 1.6; }
+    .keys { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 15px; margin: 0 0 26px; text-align: left; font-size: 12px; color: #647282; }
+    .keys strong { color: #34485e; }
+    .key { display: inline-block; min-width: 25px; text-align: center; padding: 4px 6px; color: #465a6f; border: 1px solid #d9e0e7; border-bottom: 2px solid #c5d0d9; border-radius: 5px; background: #f8fafc; font: 700 11px ui-sans-serif,system-ui; }
+    .btn { appearance: none; border: 0; width: 100%; padding: 15px 20px; border-radius: 12px; background: #364f6c; color: white; font: 700 14px ui-sans-serif,system-ui; letter-spacing: .035em; cursor: pointer; transition: background .16s, transform .16s; }
+    .btn:hover { background: #273d58; transform: translateY(-1px); }
+    .fineprint { font-size: 11px; color: #98a4af; margin: 13px 0 0; }
+    @media (max-width: 600px) {
+      .top-left { left: 13px; top: 16px; } .top-right { right: 13px; top: 19px; }
+      .subtitle { max-width: 150px; } .stat { font-size: 11px; } .progress { width: 104px; }
+      .bottom-bar { font-size: 10px; bottom: 11px; width: calc(100% - 24px); white-space: normal; }
+      .modal { padding: 27px 21px; } .keys { gap: 9px 8px; font-size: 11px; }
+    }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+  <div class="hud top-left">
+    <div class="eyebrow">3D PARKOUR · PROTOTYP 01</div>
+    <div class="game-title">BÍLÁ VĚŽ</div>
+    <div class="subtitle">Dostaň se na nejvyšší sloup.</div>
+  </div>
+  <div class="hud top-right">
+    <div class="stat">Výška: <b id="height">0,0 m</b></div>
+    <div class="stat">Checkpoint: <b id="checkpoint">0 / 20</b></div>
+    <div class="progress"><div class="progress-inner" id="progress"></div></div>
+  </div>
+  <div class="crosshair" aria-hidden="true"></div>
+  <div class="hud bottom-bar"><strong>WASD</strong> pohyb · <strong>SHIFT</strong> běh · <strong>SPACE</strong> skok / dvojskok · <span id="wallHint">U stěny drž SPACE → vis, pusť → odraz</span> · <strong>R</strong> návrat</div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="overlay" class="overlay">
+    <div class="modal">
+      <div class="symbol">▥</div>
+      <h1 id="overlayTitle">Bílá věž</h1>
+      <p class="lead" id="overlayDescription">Jedna vysoká místnost. Dvacet bílých sloupů. Skákej, odrážej se od stěn a dostaň se co nejvýš.</p>
+      <div class="keys">
+        <div><span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span> &nbsp; Pohyb</div>
+        <div><span class="key">MYŠ</span> &nbsp; Rozhlížení</div>
+        <div><span class="key">SPACE</span> &nbsp; Skok / dvojskok</div>
+        <div><span class="key">SHIFT</span> &nbsp; Běh</div>
+        <div><span class="key">SPACE</span> &nbsp; Drž u zdi, pak pusť</div>
+        <div><span class="key">R</span> &nbsp; Poslední sloup</div>
+      </div>
+      <button id="playButton" type="button" class="btn">VSTOUPIT DO MÍSTNOSTI</button>
+      <p class="fineprint">Použij počítač s klávesnicí a myší · ESC pozastaví hru</p>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+
+    // ====== Nastavení úrovně a pohybu ======
+    const ROOM_HALF = 13;
+    const ROOM_HEIGHT = 41;
+    const PLAYER_HALF = 0.34;
+    const PLAYER_HEIGHT = 1.76;
+    const EYE_HEIGHT = 1.57;
+    const GRAVITY = 21;
+    const JUMP_SPEED = 8.65;
+    const WALL_JUMP_SPEED = 8.6;
+    const WALK_SPEED = 6.35;
+    const RUN_SPEED = 10.2;
+    const WALL_REATTACH_DELAY = 0.31;
+    const FIXED_STEP = 1 / 120;
+    const HANG_PROXIMITY = 0.095;
+
+    const heightText = document.getElementById('height');
+    const checkpointText = document.getElementById('checkpoint');
+    const progress = document.getElementById('progress');
+    const wallHint = document.getElementById('wallHint');
+    const overlay = document.getElementById('overlay');
+    const overlayTitle = document.getElementById('overlayTitle');
+    const overlayDescription = document.getElementById('overlayDescription');
+    const playButton = document.getElementById('playButton');
+    const toast = document.getElementById('toast');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color('#e9edf1');
+    const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.06, 150);
+    camera.rotation.order = 'YXZ';
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.14;
+    document.body.prepend(renderer.domElement);
+
+    const ambient = new THREE.HemisphereLight(0xffffff, 0xc2cfdb, 1.55);
+    scene.add(ambient);
+    const sunlight = new THREE.DirectionalLight(0xffffff, 2.6);
+    sunlight.position.set(-17, 75, 25);
+    sunlight.target.position.set(0, 5, 0);
+    sunlight.castShadow = true;
+    sunlight.shadow.mapSize.set(2048, 2048);
+    sunlight.shadow.camera.left = -34;
+    sunlight.shadow.camera.right = 34;
+    sunlight.shadow.camera.top = 40;
+    sunlight.shadow.camera.bottom = -40;
+    sunlight.shadow.camera.near = 1;
+    sunlight.shadow.camera.far = 130;
+    sunlight.shadow.bias = -0.00015;
+    sunlight.shadow.normalBias = 0.025;
+    sunlight.shadow.radius = 2;
+    scene.add(sunlight, sunlight.target);
+
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0xfbfcfd, roughness: 0.96 });
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xf1f4f7, roughness: 0.98 });
+    const pillarMat = new THREE.MeshStandardMaterial({ color: 0xf8f9fb, roughness: 0.91 });
+    const edgeMat = new THREE.LineBasicMaterial({ color: 0x99a7b6, transparent: true, opacity: 0.38 });
+
+    function addSolid(w, h, d, x, y, z, material, outline = false) {
+      const geometry = new THREE.BoxGeometry(w, h, d);
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      if (outline) {
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMat);
+        mesh.add(edges);
+      }
+      return mesh;
+    }
+
+    addSolid(ROOM_HALF * 2, 0.4, ROOM_HALF * 2, 0, -0.2, 0, floorMat);
+    addSolid(ROOM_HALF * 2 + 1, ROOM_HEIGHT, 0.6, 0, ROOM_HEIGHT / 2, -ROOM_HALF - 0.3, wallMat);
+    addSolid(ROOM_HALF * 2 + 1, ROOM_HEIGHT, 0.6, 0, ROOM_HEIGHT / 2, ROOM_HALF + 0.3, wallMat);
+    addSolid(0.6, ROOM_HEIGHT, ROOM_HALF * 2 + 1, -ROOM_HALF - 0.3, ROOM_HEIGHT / 2, 0, wallMat);
+    addSolid(0.6, ROOM_HEIGHT, ROOM_HALF * 2 + 1, ROOM_HALF + 0.3, ROOM_HEIGHT / 2, 0, wallMat);
+
+    // Jemné měřítkové linky na stěnách a podlaze, aby bílé plochy zůstaly čitelné.
+    const grid = new THREE.GridHelper(26, 26, 0xb7c2cd, 0xc4ccd5);
+    grid.position.y = 0.013;
+    grid.material.transparent = true;
+    grid.material.opacity = 0.12;
+    grid.material.depthWrite = false;
+    scene.add(grid);
+    const bandMaterial = new THREE.LineBasicMaterial({ color: 0x8e9fac, opacity: 0.18, transparent: true });
+    for (let y = 5; y < ROOM_HEIGHT; y += 5) {
+      const geometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-ROOM_HALF + .02, y, -ROOM_HALF + .02),
+        new THREE.Vector3( ROOM_HALF - .02, y, -ROOM_HALF + .02),
+        new THREE.Vector3( ROOM_HALF - .02, y,  ROOM_HALF - .02),
+        new THREE.Vector3(-ROOM_HALF + .02, y,  ROOM_HALF - .02),
+        new THREE.Vector3(-ROOM_HALF + .02, y, -ROOM_HALF + .02)
+      ]);
+      scene.add(new THREE.Line(geometry, bandMaterial));
+    }
+
+    // Každý pilíř vyrůstá od země, je přisazený ke stěně a má schůdný vrchol.
+    // Pět sloupů na každé ze čtyř stěn tvoří stoupající spirálu.
+    const pillars = [];
+    const coords = [-9, -4.5, 0, 4.5, 9];
+    function addPillar(x, z, width, depth) {
+      const index = pillars.length;
+      const top = 1.45 + index * 1.51;
+      addSolid(width, top, depth, x, top / 2, z, pillarMat, true);
+      pillars.push({ index, x, z, width, depth, top,
+        minX: x - width / 2, maxX: x + width / 2,
+        minZ: z - depth / 2, maxZ: z + depth / 2 });
+    }
+    for (const x of coords) addPillar(x, -11.4, 3.18, 3.2);
+    for (const z of coords) addPillar(11.4, z, 3.2, 3.18);
+    for (const x of [...coords].reverse()) addPillar(x, 11.4, 3.18, 3.2);
+    for (const z of [...coords].reverse()) addPillar(-11.4, z, 3.2, 3.18);
+
+    // Pohyblivý kroužek ukazuje následující sloup. Po dokončení je nahoře cíl.
+    const targetRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.87, 0.042, 8, 48),
+      new THREE.MeshBasicMaterial({ color: 0x6f90b5, transparent: true, opacity: 0.94 })
+    );
+    targetRing.rotation.x = Math.PI / 2;
+    scene.add(targetRing);
+    const targetHalo = new THREE.Mesh(
+      new THREE.CircleGeometry(0.7, 48),
+      new THREE.MeshBasicMaterial({ color: 0xa3bfd8, transparent: true, opacity: 0.11, depthWrite: false })
+    );
+    targetHalo.rotation.x = -Math.PI / 2;
+    scene.add(targetHalo);
+
+    // Tělo hráče je skutečný hranol, ale v pohledu FPS se samo nekreslí;
+    // zůstává pouze jeho stín (a přesná hranolová kolizní schránka).
+    const body = new THREE.Mesh(
+      new THREE.BoxGeometry(PLAYER_HALF * 2, PLAYER_HEIGHT, PLAYER_HALF * 2),
+      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })
+    );
+    body.castShadow = true;
+    scene.add(body);
+
+    const player = {
+      pos: new THREE.Vector3(-9, 0, -6.3),
+      vel: new THREE.Vector3(),
+      grounded: true,
+      jumpsUsed: 0,
+      hanging: false,
+      wallNormal: new THREE.Vector3(),
+      wallCooldown: 0,
+      checkpoint: -1,
+      finished: false,
+      groundPillar: -1
+    };
+    let yaw = 0;
+    let pitch = -0.04;
+    let playing = false;
+    let firstStart = true;
+    const keys = Object.create(null);
+    let toastExpires = 0;
+    let lastFrame = performance.now();
+    let accumulated = 0;
+
+    function showToast(message, duration = 1700) {
+      toast.textContent = message;
+      toast.classList.add('show');
+      toastExpires = performance.now() + duration;
+    }
+
+    function setRingTarget() {
+      const next = Math.min(player.checkpoint + 1, pillars.length - 1);
+      const p = pillars[next];
+      targetRing.position.set(p.x, p.top + 0.13, p.z);
+      targetHalo.position.set(p.x, p.top + 0.075, p.z);
+    }
+    setRingTarget();
+
+    function updateCheckpoint(index) {
+      if (index <= player.checkpoint) return;
+      player.checkpoint = index;
+      checkpointText.textContent = `${index + 1} / ${pillars.length}`;
+      progress.style.width = `${((index + 1) / pillars.length) * 100}%`;
+      setRingTarget();
+      if (index === pillars.length - 1) {
+        player.finished = true;
+        showToast('VÝBORNĚ! Dostal ses na vrchol věže.', 5200);
+        targetRing.material.color.setHex(0x7ca995);
+      } else if (index === 0 || (index + 1) % 4 === 0) {
+        showToast(`Checkpoint ${index + 1} / ${pillars.length}`);
+      }
+    }
+
+    function resetToCheckpoint() {
+      player.hanging = false;
+      player.wallCooldown = 0.15;
+      player.vel.set(0, 0, 0);
+      player.grounded = true;
+      player.jumpsUsed = 0;
+      if (player.checkpoint >= 0) {
+        const p = pillars[player.checkpoint];
+        player.pos.set(p.x, p.top + 0.025, p.z);
+        player.groundPillar = p.index;
+        if (player.checkpoint + 1 < pillars.length) {
+          const next = pillars[player.checkpoint + 1];
+          yaw = Math.atan2(-(next.x - p.x), -(next.z - p.z));
+        }
+        showToast(`Zpět na checkpoint ${player.checkpoint + 1}`);
+      } else {
+        player.pos.set(-9, 0, -6.3);
+        player.groundPillar = -1;
+        yaw = 0;
+        showToast('Zpět na start');
+      }
+      pitch = -0.04;
+    }
+
+    function xzOverlap(p, b, extra = 0) {
+      return p.x + PLAYER_HALF > b.minX - extra && p.x - PLAYER_HALF < b.maxX + extra &&
+             p.z + PLAYER_HALF > b.minZ - extra && p.z - PLAYER_HALF < b.maxZ + extra;
+    }
+    function heightOverlap(b) {
+      return player.pos.y < b.top - 0.025 && player.pos.y + PLAYER_HEIGHT > 0;
+    }
+
+    // Normála povrchu směřující od stěny k hráči (pro výskok od stěny).
+    function findNearbyWall() {
+      const p = player.pos;
+      let best = null;
+      let minDistance = Infinity;
+      function consider(distance, nx, nz) {
+        if (distance >= -0.035 && distance <= HANG_PROXIMITY && Math.abs(distance) < minDistance) {
+          best = new THREE.Vector3(nx, 0, nz);
+          minDistance = Math.abs(distance);
+        }
+      }
+      consider(p.x - PLAYER_HALF + ROOM_HALF, 1, 0);
+      consider(ROOM_HALF - p.x - PLAYER_HALF, -1, 0);
+      consider(p.z - PLAYER_HALF + ROOM_HALF, 0, 1);
+      consider(ROOM_HALF - p.z - PLAYER_HALF, 0, -1);
+      for (const b of pillars) {
+        if (!heightOverlap(b)) continue;
+        const zIn = p.z + PLAYER_HALF > b.minZ - .015 && p.z - PLAYER_HALF < b.maxZ + .015;
+        const xIn = p.x + PLAYER_HALF > b.minX - .015 && p.x - PLAYER_HALF < b.maxX + .015;
+        if (zIn) {
+          consider(b.minX - (p.x + PLAYER_HALF), -1, 0);
+          consider((p.x - PLAYER_HALF) - b.maxX, 1, 0);
+        }
+        if (xIn) {
+          consider(b.minZ - (p.z + PLAYER_HALF), 0, -1);
+          consider((p.z - PLAYER_HALF) - b.maxZ, 0, 1);
+        }
+      }
+      return best;
+    }
+
+    function startHang(normal) {
+      if (!normal || player.grounded || player.hanging || player.wallCooldown > 0) return;
+      player.hanging = true;
+      player.wallNormal.copy(normal);
+      player.vel.set(0, 0, 0);
+      wallHint.textContent = 'DRŽÍŠ SE STĚNY — pusť SPACE pro odraz!';
+      wallHint.style.fontWeight = '800';
+      wallHint.style.color = '#4b749d';
+    }
+
+    function releaseHang() {
+      if (!player.hanging) return;
+      player.hanging = false;
+      player.grounded = false;
+      player.wallCooldown = WALL_REATTACH_DELAY;
+      player.vel.set(player.wallNormal.x * 6.4, WALL_JUMP_SPEED, player.wallNormal.z * 6.4);
+      player.jumpsUsed = 1; // po wall jumpu zbývá jeden skok ve vzduchu
+      wallHint.textContent = 'U stěny drž SPACE → vis, pusť → odraz';
+      wallHint.style.fontWeight = '';
+      wallHint.style.color = '';
+    }
+
+    function handleSpacePress() {
+      if (player.hanging) return;
+      if (player.grounded) {
+        player.vel.y = JUMP_SPEED;
+        player.grounded = false;
+        player.jumpsUsed = 1;
+        return;
+      }
+      const wall = findNearbyWall();
+      if (wall && player.wallCooldown <= 0) {
+        startHang(wall);
+        return;
+      }
+      if (player.jumpsUsed < 2) {
+        player.vel.y = JUMP_SPEED;
+        player.jumpsUsed = 2;
+      }
+    }
+
+    function collisionX(newX) {
+      let x = THREE.MathUtils.clamp(newX, -ROOM_HALF + PLAYER_HALF, ROOM_HALF - PLAYER_HALF);
+      if (x !== newX) player.vel.x = 0;
+      for (const b of pillars) {
+        if (!heightOverlap(b)) continue;
+        if (player.pos.z + PLAYER_HALF <= b.minZ || player.pos.z - PLAYER_HALF >= b.maxZ) continue;
+        if (x + PLAYER_HALF > b.minX && x - PLAYER_HALF < b.maxX) {
+          if (player.vel.x > 0) x = Math.min(x, b.minX - PLAYER_HALF);
+          else if (player.vel.x < 0) x = Math.max(x, b.maxX + PLAYER_HALF);
+          player.vel.x = 0;
+        }
+      }
+      return x;
+    }
+    function collisionZ(newZ) {
+      let z = THREE.MathUtils.clamp(newZ, -ROOM_HALF + PLAYER_HALF, ROOM_HALF - PLAYER_HALF);
+      if (z !== newZ) player.vel.z = 0;
+      for (const b of pillars) {
+        if (!heightOverlap(b)) continue;
+        if (player.pos.x + PLAYER_HALF <= b.minX || player.pos.x - PLAYER_HALF >= b.maxX) continue;
+        if (z + PLAYER_HALF > b.minZ && z - PLAYER_HALF < b.maxZ) {
+          if (player.vel.z > 0) z = Math.min(z, b.minZ - PLAYER_HALF);
+          else if (player.vel.z < 0) z = Math.max(z, b.maxZ + PLAYER_HALF);
+          player.vel.z = 0;
+        }
+      }
+      return z;
+    }
+
+    function physicsStep(dt) {
+      player.wallCooldown = Math.max(0, player.wallCooldown - dt);
+      if (player.hanging) {
+        // Dokud je SPACE držen, hráč stojí na místě bez gravitace.
+        if (!keys.Space) releaseHang();
+        return;
+      }
+
+      // Pohyb se orientuje podle horizontálního směru pohledu.
+      const fw = Number(Boolean(keys.KeyW)) - Number(Boolean(keys.KeyS));
+      const rt = Number(Boolean(keys.KeyD)) - Number(Boolean(keys.KeyA));
+      const length = Math.hypot(fw, rt) || 1;
+      const speed = keys.ShiftLeft || keys.ShiftRight ? RUN_SPEED : WALK_SPEED;
+      const desiredX = ((-Math.sin(yaw) * fw + Math.cos(yaw) * rt) / length) * speed;
+      const desiredZ = ((-Math.cos(yaw) * fw - Math.sin(yaw) * rt) / length) * speed;
+      const accel = player.grounded ? 15 : 6.2;
+      const blend = 1 - Math.exp(-accel * dt);
+      player.vel.x += (desiredX - player.vel.x) * blend;
+      player.vel.z += (desiredZ - player.vel.z) * blend;
+
+      // Osy řešíme zvlášť: hráč nemůže projít skrz sloupy ani obvodové stěny.
+      player.pos.x = collisionX(player.pos.x + player.vel.x * dt);
+      player.pos.z = collisionZ(player.pos.z + player.vel.z * dt);
+
+      const oldY = player.pos.y;
+      player.vel.y -= GRAVITY * dt;
+      player.pos.y += player.vel.y * dt;
+      player.grounded = false;
+      player.groundPillar = -1;
+
+      // Přistání na nejvyšší horní ploše, kterou při pádu překročíme.
+      if (player.vel.y <= 0) {
+        let landingY = player.pos.y <= 0 && oldY >= -0.02 ? 0 : -Infinity;
+        let landingIndex = -1;
+        for (const b of pillars) {
+          if (!xzOverlap(player.pos, b)) continue;
+          if (oldY >= b.top - 0.025 && player.pos.y <= b.top && b.top > landingY) {
+            landingY = b.top;
+            landingIndex = b.index;
+          }
+        }
+        if (landingY !== -Infinity) {
+          player.pos.y = landingY;
+          player.vel.y = 0;
+          player.grounded = true;
+          player.groundPillar = landingIndex;
+          player.jumpsUsed = 0;
+          if (landingIndex >= 0) updateCheckpoint(landingIndex);
+        }
+      }
+      if (player.pos.y < 0) {
+        player.pos.y = 0;
+        player.vel.y = 0;
+        player.grounded = true;
+        player.jumpsUsed = 0;
+      }
+
+      // Automatické zachycení při kontaktu se stěnou a DRŽENÉM SPACE.
+      if (!player.grounded && keys.Space && player.wallCooldown <= 0) {
+        const wall = findNearbyWall();
+        if (wall) startHang(wall);
+      }
+    }
+
+    function updateCamera(now) {
+      camera.rotation.y = yaw;
+      camera.rotation.x = pitch;
+      const bob = player.grounded && playing && (keys.KeyW || keys.KeyA || keys.KeyS || keys.KeyD)
+        ? Math.sin(now * (keys.ShiftLeft || keys.ShiftRight ? .017 : .012)) * .018
+        : 0;
+      camera.position.set(player.pos.x, player.pos.y + EYE_HEIGHT + bob, player.pos.z);
+      body.position.set(player.pos.x, player.pos.y + PLAYER_HEIGHT / 2, player.pos.z);
+      heightText.textContent = `${player.pos.y.toFixed(1).replace('.', ',')} m`;
+      targetRing.rotation.z = now * 0.00032;
+      const pulse = 0.74 + Math.sin(now * .003) * .13;
+      targetRing.material.opacity = pulse;
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.code)) event.preventDefault();
+      if (!playing) return;
+      if (event.code === 'KeyR' && !event.repeat) resetToCheckpoint();
+      if (event.code === 'Space' && !keys.Space) handleSpacePress();
+      keys[event.code] = true;
+    });
+    document.addEventListener('keyup', (event) => {
+      keys[event.code] = false;
+      if (event.code === 'Space' && player.hanging) releaseHang();
+    });
+    document.addEventListener('mousemove', (event) => {
+      if (!playing) return;
+      yaw -= event.movementX * .00215;
+      pitch -= event.movementY * .00215;
+      pitch = THREE.MathUtils.clamp(pitch, -1.46, 1.46);
+    });
+    document.addEventListener('pointerlockchange', () => {
+      playing = document.pointerLockElement === renderer.domElement;
+      overlay.classList.toggle('hidden', playing);
+      if (!playing) {
+        for (const k of Object.keys(keys)) keys[k] = false;
+        if (player.hanging) releaseHang();
+        overlayTitle.textContent = 'Pozastaveno';
+        overlayDescription.textContent = 'Vrátíš se na stejné místo. Poslední dosažený sloup zůstává checkpointem.';
+        playButton.textContent = 'POKRAČOVAT';
+      } else if (firstStart) {
+        firstStart = false;
+        showToast('První sloup je označený modrým kroužkem.', 3000);
+      }
+    });
+    document.addEventListener('pointerlockerror', () => {
+      overlayTitle.textContent = 'Nepodařilo se zachytit myš';
+      overlayDescription.textContent = 'Zkus znovu kliknout na tlačítko. Hra potřebuje povolené uzamčení kurzoru.';
+    });
+    playButton.addEventListener('click', () => renderer.domElement.requestPointerLock());
+    renderer.domElement.addEventListener('click', () => {
+      if (!playing && overlay.classList.contains('hidden')) renderer.domElement.requestPointerLock();
+    });
+    window.addEventListener('blur', () => {
+      for (const k of Object.keys(keys)) keys[k] = false;
+      if (player.hanging) releaseHang();
+    });
+    window.addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    });
+
+    function frame(now) {
+      requestAnimationFrame(frame);
+      const dt = Math.min((now - lastFrame) / 1000, 0.05);
+      lastFrame = now;
+      if (playing) {
+        accumulated += dt;
+        let count = 0;
+        while (accumulated >= FIXED_STEP && count++ < 7) {
+          physicsStep(FIXED_STEP);
+          accumulated -= FIXED_STEP;
+        }
+        if (count >= 7) accumulated = 0;
+      } else {
+        accumulated = 0;
+      }
+      updateCamera(now);
+      if (toastExpires && now > toastExpires) {
+        toast.classList.remove('show');
+        toastExpires = 0;
+      }
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
